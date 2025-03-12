@@ -1,0 +1,58 @@
+on:
+  pull_request:
+    branches: [main, master]
+
+name: run-pipeline
+
+permissions: write-all
+
+jobs:
+  style_pkg:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - uses: cachix/cachix-action@v15
+        with:
+          name: rstats-on-nix
+
+      - name: Build dev env
+        run: nix-build
+
+      - name: Run import_nix_archive if file exists
+        run: |
+          if [ -f pipeline_outputs.nar ]; then
+            nix-shell --run "Rscript -e 'rixpress::import_nix_archive(archive_file = \"pipeline_outputs.nar\")'"
+          else
+            echo "NULL"
+          fi
+
+      - name: Generate and build pipeline
+        run: |
+          nix-shell --run "Rscript -e 'source(\"gen_pipeline.R\");rixpress::rxp_make()'"
+
+      - name: Export outputs to avoid rebuild
+        run: |
+          nix-shell --run "Rscript -e 'rixpress::export_nix_archive(archive_file = \"pipeline_outputs.nar\")'"
+
+      - name: Push updated pipeline_outputs.nar if changed
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          # Update the remote URL to include the token for authentication
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git
+          # Check if pipeline_outputs.nar has been modified
+          if git diff --quiet pipeline_outputs.nar; then
+            echo "No changes in pipeline_outputs.nar"
+          else
+            git add pipeline_outputs.nar
+            git commit -m "Update pipeline_outputs.nar [skip ci]"
+            git push origin HEAD:${{ github.ref }}
+          fi
