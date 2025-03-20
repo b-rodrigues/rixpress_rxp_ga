@@ -13,21 +13,37 @@ let
       pandas;
   };
 
-    rix = (pkgs.rPackages.buildRPackage {
-      name = "rix";
-      src = pkgs.fetchgit {
-        url = "https://github.com/ropensci/rix/";
-        rev = "075a7001b5582a0cf7b0f5dfcbbfbb0672cd0b57";
-        sha256 = "sha256-6FJvSC5uD3h/LIkXcxV5d5uwXJXgbMxqzqDpQAccCXY=";
-      };
-      propagatedBuildInputs = builtins.attrValues {
-        inherit (pkgs.rPackages) 
-          codetools
-          curl
-          jsonlite
-          sys;
-      };
-    });
+  rix = (pkgs.rPackages.buildRPackage {
+    name = "rix";
+    src = pkgs.fetchgit {
+      url = "https://github.com/ropensci/rix/";
+      rev = "6a7e8d0bf310006bd14445017ab753e8640ced71";
+      sha256 = "sha256-9wXKJd+H05ArIORQwxoSPo7hOo+a5wJSoAnTNy7501A=";
+    };
+    propagatedBuildInputs = builtins.attrValues {
+      inherit (pkgs.rPackages) 
+        codetools
+        curl
+        jsonlite
+        sys;
+    };
+  });
+
+  rixpress = (pkgs.rPackages.buildRPackage {
+    name = "rixpress";
+    src = pkgs.fetchgit {
+      url = "https://github.com/b-rodrigues/rixpress/";
+      rev = "0198bdebd2986338e617582dea4c7cdb8abe140f";
+      sha256 = "sha256-zmxv9Jk9hKKKh1Ug+WK3QLpKokePvVlI3m21EXs68JE=";
+    };
+    propagatedBuildInputs = builtins.attrValues {
+      inherit (pkgs.rPackages) 
+        jsonlite
+        igraph
+        rlang;
+    } ++ [ rix ];
+  });
+ 
 
   tex = (pkgs.texlive.combine {
     inherit (pkgs.texlive) 
@@ -56,7 +72,7 @@ shell = pkgs.mkShell {
    LC_PAPER = "en_US.UTF-8";
    LC_MEASUREMENT = "en_US.UTF-8";
 
-  buildInputs = [ rix rpkgs pypkgs tex system_packages ];
+  buildInputs = [ rix rixpress rpkgs pypkgs tex system_packages ];
   
 };
 in
