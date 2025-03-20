@@ -19,6 +19,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Create this folder to silence warning
+        run: mkdir -p ~/.nix-defexpr/channels
+
       - name: Fetch pipeline_outputs.nar from pipeline-output branch if exists
         run: |
           if git ls-remote --exit-code origin pipeline-output; then
