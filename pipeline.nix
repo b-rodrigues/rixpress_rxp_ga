@@ -1,65 +1,117 @@
 let
-  default = import ./default.nix;
-  pkgs = default.pkgs;
-  shell = default.shell;
-
-  commonBuildInputs = shell.buildInputs;
-  commonConfigurePhase = ''
-    cp ${./libraries.R} libraries.R
+  py_env = import ./py-env.nix;
+  py_envPkgs = py_env.pkgs;
+  py_envShell = py_env.shell;
+  py_envBuildInputs = py_envShell.buildInputs;
+  py_envConfigurePhase = ''
+    cp ${./_rixpress/py_env_libraries.py} libraries.py
     mkdir -p $out
   '';
-
+default = import ./default.nix;
+  defaultPkgs = default.pkgs;
+  defaultShell = default.shell;
+  defaultBuildInputs = defaultShell.buildInputs;
+  defaultConfigurePhase = ''
+    cp ${./_rixpress/default_libraries.R} libraries.R
+    mkdir -p $out
+  '';
+quarto_env = import ./quarto-env.nix;
+  quarto_envPkgs = quarto_env.pkgs;
+  quarto_envShell = quarto_env.shell;
+  quarto_envBuildInputs = quarto_envShell.buildInputs;
+  quarto_envConfigurePhase = ''
+    cp ${./_rixpress/quarto_env_libraries.R} libraries.R
+    mkdir -p $out
+  '';
+  
   # Function to create R derivations
-  makeRDerivation = { name, buildPhase, src ? null }:
+  makeRDerivation = { name, buildInputs, configurePhase, buildPhase, src ? null }:
     let rdsFile = "${name}.rds";
-    in pkgs.stdenv.mkDerivation {
+    in defaultPkgs.stdenv.mkDerivation {
       inherit name src;
-      buildInputs = commonBuildInputs;
       dontUnpack = true;
-      configurePhase = commonConfigurePhase;
-      inherit buildPhase;
+      inherit buildInputs configurePhase buildPhase;
       installPhase = ''
         cp ${rdsFile} $out/
       '';
-  };
+    };
+  # Function to create Python derivations
+  makePyDerivation = { name, buildInputs, configurePhase, buildPhase, src ? null }:
+    let
+      pickleFile = "${name}.pickle";
+    in
+      defaultPkgs.stdenv.mkDerivation {
+        inherit name src;
+        dontUnpack = true;
+        buildInputs = buildInputs;
+        inherit configurePhase buildPhase;
+        installPhase = ''
+          cp ${pickleFile} $out
+        '';
+      };
 
   # Define all derivations
-  mtcars = makeRDerivation {
-    name = "mtcars";
+    mtcars_pl = makePyDerivation {
+    name = "mtcars_pl";
     src = ./data/mtcars.csv;
+    buildInputs = py_envBuildInputs;
+    configurePhase = py_envConfigurePhase;
     buildPhase = ''
       cp $src input_file
-Rscript -e "
-        source('libraries.R')
-        data <- do.call(function(x) (read.csv(file = x, sep = '|')), list('input_file'))
-        saveRDS(data, 'mtcars.rds')"
+python -c "
+exec(open('libraries.py').read())
+file_path = 'input_file'
+data = eval('lambda x: polars.read_csv(x, separator=\'|\')')(file_path)
+with open('mtcars_pl.pickle', 'wb') as f:
+    pickle.dump(data, f)
+"
+
+    '';
+  };
+
+  mtcars_pl_am = makePyDerivation {
+    name = "mtcars_pl_am";
+    buildInputs = py_envBuildInputs;
+    configurePhase = py_envConfigurePhase;
+    buildPhase = ''
+      python -c "
+exec(open('libraries.py').read())
+with open('${mtcars_pl}/mtcars_pl.pickle', 'rb') as f: mtcars_pl = pickle.load(f)
+exec('mtcars_pl_am = mtcars_pl.filter(polars.col(\'am\') == 1).to_pandas()')
+with open('mtcars_pl_am.pickle', 'wb') as f: pickle.dump(globals()['mtcars_pl_am'], f)"
     '';
   };
 
   mtcars_am = makeRDerivation {
     name = "mtcars_am";
+    buildInputs = defaultBuildInputs;
+    configurePhase = defaultConfigurePhase;
     buildPhase = ''
-      Rscript -e "
-        source('libraries.R')
-        mtcars <- readRDS('${mtcars}/mtcars.rds')
-        mtcars_am <- filter(mtcars, am == 1)
-        saveRDS(mtcars_am, 'mtcars_am.rds')"
+      export RETICULATE_PYTHON='${defaultPkgs.python3}/bin/python'
+       Rscript -e "
+         source('libraries.R')
+         mtcars_am <- reticulate::py_load_object('${mtcars_pl_am}/mtcars_pl_am.pickle', pickle = 'pickle', convert = TRUE)
+         saveRDS(mtcars_am, 'mtcars_am.rds')"
     '';
   };
 
   mtcars_head = makeRDerivation {
     name = "mtcars_head";
+    buildInputs = defaultBuildInputs;
+    configurePhase = defaultConfigurePhase;
     buildPhase = ''
       Rscript -e "
         source('libraries.R')
         mtcars_am <- readRDS('${mtcars_am}/mtcars_am.rds')
-        mtcars_head <- head(mtcars_am)
+        mtcars_head <- my_head(mtcars_am)
         saveRDS(mtcars_head, 'mtcars_head.rds')"
     '';
   };
 
   mtcars_tail = makeRDerivation {
     name = "mtcars_tail";
+    buildInputs = defaultBuildInputs;
+    configurePhase = defaultConfigurePhase;
     buildPhase = ''
       Rscript -e "
         source('libraries.R')
@@ -71,24 +123,25 @@ Rscript -e "
 
   mtcars_mpg = makeRDerivation {
     name = "mtcars_mpg";
+    buildInputs = defaultBuildInputs;
+    configurePhase = defaultConfigurePhase;
     buildPhase = ''
       Rscript -e "
         source('libraries.R')
         mtcars_tail <- readRDS('${mtcars_tail}/mtcars_tail.rds')
-        mtcars_mpg <- select(mtcars_tail, mpg)
+        mtcars_mpg <- dplyr::select(mtcars_tail, mpg)
         saveRDS(mtcars_mpg, 'mtcars_mpg.rds')"
     '';
   };
 
-  page = pkgs.stdenv.mkDerivation {
+  page = defaultPkgs.stdenv.mkDerivation {
     name = "page";
-    src = pkgs.lib.fileset.toSource {
+    src = defaultPkgs.lib.fileset.toSource {
       root = ./.;
-      fileset = if builtins.pathExists ./_rixpress
-                then pkgs.lib.fileset.difference ./. ./_rixpress
-                else ./.;
+      fileset = defaultPkgs.lib.fileset.unions [ ./page.qmd ./content.qmd ./images ];
     };
-    buildInputs = [ commonBuildInputs pkgs.which pkgs.quarto ];
+    buildInputs = quarto_envBuildInputs;
+    configurePhase = quarto_envConfigurePhase;
     buildPhase = ''
   mkdir home
   export HOME=$PWD/home
@@ -100,13 +153,13 @@ Rscript -e "
   };
 
   # Generic default target that builds all derivations
-  allDerivations = pkgs.symlinkJoin {
+  allDerivations = defaultPkgs.symlinkJoin {
     name = "all-derivations";
-    paths = with builtins; attrValues { inherit mtcars mtcars_am mtcars_head mtcars_tail mtcars_mpg page; };
+    paths = with builtins; attrValues { inherit mtcars_pl mtcars_pl_am mtcars_am mtcars_head mtcars_tail mtcars_mpg page; };
   };
 
 in
 {
-  inherit mtcars mtcars_am mtcars_head mtcars_tail mtcars_mpg page;  # Make individual derivations available as attributes
-  default = allDerivations;  # Set the default target to build everything
+  inherit mtcars_pl mtcars_pl_am mtcars_am mtcars_head mtcars_tail mtcars_mpg page;
+  default = allDerivations;
 }
