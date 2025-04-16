@@ -9,14 +9,14 @@ list(
   ),
 
   rxp_r(
-    name = filtered_mtcars,
+    name = filtered_sleep_mtcars,
     expr = my_filter(mtcars),
     additional_files = "functions.R"
   ),
 
   rxp_r(
     name = mtcars_mpg,
-    expr = dplyr::select(filtered_mtcars, mpg)
+    expr = dplyr::select(filtered_sleep_mtcars, mpg)
   )
 ) |>
   rixpress(project_path = ".", build = FALSE)
