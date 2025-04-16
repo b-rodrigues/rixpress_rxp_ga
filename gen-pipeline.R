@@ -10,7 +10,8 @@ list(
 
   rxp_r(
     name = filtered_mtcars,
-    expr = dplyr::filter(mtcars, am == 1)
+    expr = my_filter(mtcars),
+    additional_files = "functions.R"
   ),
 
   rxp_r(
